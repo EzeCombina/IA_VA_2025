@@ -24,6 +24,8 @@ int *p;
 
 int client_sock = -1;  // global
 
+QueueHandle_t comando_queue;
+
 //SemaphoreHandle_t sock_mutex;  // Mutex para proteger el acceso al socket
 //sock_mutex = xSemaphoreCreateMutex();
 
@@ -102,7 +104,10 @@ void tcp_server_task(void *pvParameters)
             {
                 rx_buffer[len] = 0;
                 ESP_LOGI(TAG, "Comando recibido: %s", rx_buffer);
-                *p = &rx_buffer; // Asigna el comando recibido a la variable global
+                if (xQueueSend(comando_queue, rx_buffer, pdMS_TO_TICKS(100)) != pdPASS) 
+                {
+                    ESP_LOGW(TAG, "No se pudo enviar el comando a la cola");
+                }
             }
         }
         close(client_sock);
@@ -114,31 +119,28 @@ void motores_task(void *pvParameters)
     while(1)
     {
         // Aquí se implementa la lógica para controlar los motores
-        switch(*p)
-        {
-            case 'Adelante':
+        char comando[128];
+
+        if (xQueueReceive(comando_queue, comando, portMAX_DELAY) == pdPASS) {
+            ESP_LOGI(TAG, "Comando recibido por motores_task: %s", comando);
+
+            if(strcmp(comando, "Adelante") == 0) {
                 ESP_LOGI(TAG, "Movimiento: Adelante");
-                vTaskDelay(1000 / portTICK_PERIOD_MS); // Simula un movimiento de 1 segundo
-                send(client_sock, "Recibido\n", strlen("Recibido\n"), 0);  // Responde al cliente
-                // Agregar una lógica que mida el encoder y detecte cuando llego al valor deseado para parar el motor
-                break;
-
-            case 'Atras':
+                send(client_sock, "Recibido", strlen("Recibido"), 0);
+            }
+            else if(strcmp(comando, "Atras") == 0) {
                 ESP_LOGI(TAG, "Movimiento: Atras");
-                break;
-            
-            case 'Derecha':
+                send(client_sock, "Recibido", strlen("Recibido"), 0);
+            }
+            else if(strcmp(comando, "Derecha") == 0) {
                 ESP_LOGI(TAG, "Movimiento: Derecha");
-                break;
-
-            case 'Izuierda':
+                send(client_sock, "Recibido", strlen("Recibido"), 0);
+            }
+            else if(strcmp(comando, "Izquierda") == 0) {
                 ESP_LOGI(TAG, "Movimiento: Izquierda");
-                break;
-
-            default:
-                break;
+                send(client_sock, "Recibido", strlen("Recibido"), 0);
+            }
         }
-
         vTaskDelay(1000 / portTICK_PERIOD_MS); // Simula un retardo de 1 segundo
     }
 }
@@ -162,6 +164,13 @@ void app_main(void)
 
     // 4. Crear interfaz de red WiFi AP
     wifi_init_softap();
+
+    // Crear la cola de comandos
+    comando_queue = xQueueCreate(5, sizeof(char) * 128); // Cola para 5 comandos de hasta 128 bytes
+    if (comando_queue == NULL) {
+        ESP_LOGE(TAG, "No se pudo crear la cola de comandos");
+        while(1);
+    }
 
     //xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL); // Crea la tarea del servidor TCP
     BaseType_t errA = xTaskCreatePinnedToCore(
