@@ -22,7 +22,7 @@ aruco_positions = {
 }
 
 # Abrir cámara IP
-cap = cv.VideoCapture("http://192.168.1.6:8080/video")  # ajustá la IP
+cap = cv.VideoCapture("http://192.168.0.110:8080/video")  # ajustá la IP
 
 while True:
     ret, frame = cap.read()

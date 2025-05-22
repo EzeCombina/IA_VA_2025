@@ -1,6 +1,7 @@
 import cv2 as cv
 import numpy as np
 import time
+import datetime
 
 # Diccionario y detector ArUco
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_6X6_250)
@@ -27,10 +28,37 @@ GRID_COLOR = (255, 0, 0)
 MARKER_COLOR = (0, 255, 255)
 
 # Cámara
-cap = cv.VideoCapture("http://192.168.0.110:8080/video")
+cap = cv.VideoCapture("http://192.168.0.172:8080/video")
 
 last_print = 0
 print_interval = 3  # segundos
+
+def guardar_snapshot_con_grilla(frame_con_grilla, src_pts, output_size=(400, 400)):
+    """
+    Recorta y guarda la zona delimitada por los ArUcos (con la grilla ya dibujada encima).
+    """
+    dst_pts = np.array([
+        [0, 0],
+        [output_size[0], 0],
+        [output_size[0], output_size[1]],
+        [0, output_size[1]]
+    ], dtype=np.float32)
+
+    # Aseguramos que src_pts está en el orden TL, TR, BR, BL
+    src_pts = np.array(src_pts, dtype=np.float32)
+
+    # Matriz de homografía para recorte corregido
+    h_crop = cv.getPerspectiveTransform(src_pts, dst_pts)
+
+    # Aplicamos la transformación al frame con grilla ya superpuesta
+    snapshot = cv.warpPerspective(frame_con_grilla, h_crop, output_size)
+
+    # Generamos un nombre con timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"snapshot_{timestamp}.png"
+    cv.imwrite(filename, snapshot)
+    print(f"[INFO] Imagen guardada como {filename}")
+
 
 while True:
     ret, frame = cap.read()
@@ -64,25 +92,36 @@ while True:
             h_matrix = cv.getPerspectiveTransform(dst_pts, src_pts)
             inv_h_matrix = cv.getPerspectiveTransform(src_pts, dst_pts)
 
-            # Crear matriz visual
-            grid_img = np.ones((grid_height, grid_width, 3), dtype=np.uint8) * 255
+            # Crear matriz visual transparente (4 canales BGRA)
+            grid_img = np.zeros((grid_height, grid_width, 4), dtype=np.uint8)  # fondo transparente
+
             step = 50
+            line_color = (255, 0, 0, 255)  # azul con alfa 255
+
             for x in range(0, grid_width, step):
-                cv.line(grid_img, (x, 0), (x, grid_height), GRID_COLOR, 1)
+                cv.line(grid_img, (x, 0), (x, grid_height), line_color, 1)
             for y in range(0, grid_height, step):
-                cv.line(grid_img, (0, y), (grid_width, y), GRID_COLOR, 1)
+                cv.line(grid_img, (0, y), (grid_width, y), line_color, 1)
 
             # Proyectar grilla
-            warped = cv.warpPerspective(grid_img, h_matrix, (frame.shape[1], frame.shape[0]))
+            warped = cv.warpPerspective(grid_img, h_matrix, (frame.shape[1], frame.shape[0]), flags=cv.INTER_LINEAR, borderMode=cv.BORDER_TRANSPARENT)
 
             # Máscara y fusión
-            mask = np.zeros_like(frame)
-            cv.fillConvexPoly(mask, np.int32(src_pts), (255, 255, 255))
-            inv_mask = cv.bitwise_not(mask)
+            # Separar canales y preparar máscara alpha
+            warped_bgr = warped[..., :3]
+            alpha_mask = warped[..., 3]  # canal alfa
 
-            frame_bg = cv.bitwise_and(frame, inv_mask)
-            warped_fg = cv.bitwise_and(warped, mask)
-            frame = cv.add(frame_bg, warped_fg)
+            # Crear máscara 3 canales para mezcla
+            alpha_mask_3 = cv.merge([alpha_mask, alpha_mask, alpha_mask])
+
+            # Normalizar máscara a rango 0-1 float
+            alpha = alpha_mask_3.astype(float) / 255.0
+            frame_float = frame.astype(float)
+            warped_float = warped_bgr.astype(float)
+
+            # Mezclar imágenes usando alpha
+            frame = cv.convertScaleAbs(warped_float * alpha + frame_float * (1 - alpha))
+            frame_con_grilla = frame.copy()
 
             # Detectar marcador móvil
             if mobile_id in detected:
@@ -103,9 +142,15 @@ while True:
                     last_print = time.time()
 
     cv.imshow("Tracking ArUco", frame)
-    if cv.waitKey(1) == 27:
+    key = cv.waitKey(1) & 0xFF
+    if key == 27:  # ESC para salir
         break
+    elif key == ord('s'):
+        if 'src_pts' in locals() and 'frame_con_grilla' in locals():
+            guardar_snapshot_con_grilla(frame_con_grilla, src_pts)
+        else:
+            print("[ADVERTENCIA] No se puede guardar la imagen. Verificá que los ArUcos estén detectados.")
+
 
 cap.release()
 cv.destroyAllWindows()
-
