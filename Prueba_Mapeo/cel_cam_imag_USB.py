@@ -2,6 +2,7 @@ import cv2 as cv
 import numpy as np
 import time
 import datetime
+import subprocess
 
 # Diccionario y detector ArUco
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_6X6_250)
@@ -36,8 +37,15 @@ dst_pts = np.array([
 GRID_COLOR = (255, 0, 0)
 MARKER_COLOR = (0, 255, 255)
 
+# Intentar establecer el redireccionamiento ADB
+try:
+    subprocess.run([r"C:\platform-tools\adb.exe", "reverse", "tcp:8080", "tcp:8080"], check=True)
+    print("[INFO] Redireccionamiento ADB activo en puerto 8080")
+except subprocess.CalledProcessError:
+    print("[ERROR] Falló el redireccionamiento ADB. Verificá que el celular esté conectado y ADB esté funcionando.")
+
 # Cámara
-cap = cv.VideoCapture("http://192.168.1.6:8080/video")
+cap = cv.VideoCapture("http://127.0.0.1:8080/video")
 
 last_print = 0
 print_interval = 3  # segundos
@@ -155,4 +163,3 @@ while True:
 
 cap.release()
 cv.destroyAllWindows()
-
