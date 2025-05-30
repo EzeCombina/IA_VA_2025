@@ -8,10 +8,10 @@ import time
 import os
 
 # Parámetros del entorno
-GRID_SIZE = (6, 6)  # (filas, columnas)
+GRID_SIZE = (5, 5)  # (filas, columnas)
 OBSTACLES = [(1, 1), (1, 2), (2, 2), (3, 4), (5, 1), (5, 2), (5, 3), (4, 5), (3, 2), (4, 2)]
 START = (0, 0)
-GOAL = (5, 5)
+GOAL = (4, 4)
 ACTIONS = ["UP", "DOWN", "LEFT", "RIGHT"]
 
 # Entorno personalizado
