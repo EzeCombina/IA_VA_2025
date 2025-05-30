@@ -38,7 +38,8 @@ GRID_COLOR = (255, 0, 0)
 MARKER_COLOR = (0, 255, 255)
 
 # Cámara
-cap = cv.VideoCapture("http://192.168.1.6:8080/video")
+#cap = cv.VideoCapture("http://192.168.3.236:8080/video")
+cap = cv.VideoCapture(1)
 
 # Definimos variables globales para el printeo de posiciones
 last_print = 0

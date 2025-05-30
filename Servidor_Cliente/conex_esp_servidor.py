@@ -38,12 +38,12 @@ try:
             print("[ESP32] No se recibió respuesta")
 
         # Enviar también al servidor local (opcional)
-        if local_socket:
-            try:
-                local_socket.sendall(entrada.encode())
-                print(f"[LOCAL] Enviado: {entrada}")
-            except:
-                print("[LOCAL] Error al enviar al servidor local.")
+        #if local_socket:
+        #    try:
+        #        local_socket.sendall(entrada.encode())
+        #        print(f"[LOCAL] Enviado: {entrada}")
+        #    except:
+        #        print("[LOCAL] Error al enviar al servidor local.")
 
         time.sleep(1)
 except KeyboardInterrupt:
