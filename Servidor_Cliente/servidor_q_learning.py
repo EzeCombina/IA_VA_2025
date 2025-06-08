@@ -7,7 +7,7 @@ PORT = 65432
 
 config = {
     "GRID_SIZE": [5, 5],
-    "OBSTACLES": [(1, 1), (1, 2), (2, 2), (3, 4), (4, 2)],
+    "OBSTACLES": [(1, 1), (1, 2), (2, 2), (3, 4), (4, 2), (0, 3)],
     "START": (0, 0),
     "GOAL": (4, 4),
     "ACTIONS": ["UP", "DOWN", "LEFT", "RIGHT"]

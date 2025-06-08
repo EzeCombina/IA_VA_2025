@@ -61,7 +61,7 @@ siguiendo el paradigma de programación orientada a objetos (OOP)
 class GridWorldEnv:
     # Con la funcion __init_, se inicializa la clase GridWorldEnv, que representa un entorno de cuadrícula para un agente.
     def __init__(self, grid_size, start, goal, obstacles):
-        # srlf hace referencia a la instancia actual de la clase, permitiendo acceder a sus atributos y métodos.
+        # self hace referencia a la instancia actual de la clase, permitiendo acceder a sus atributos y métodos.
         self.grid_size = grid_size
         self.start = start
         self.goal = goal
@@ -136,7 +136,7 @@ def train(env, state_size, action_size):
     criterion = nn.MSELoss()  # Función de pérdida MSE para calcular el error entre las predicciones y los valores reales
     memory = deque(maxlen=2000)  # Memoria para almacenar experiencias pasadas (estado, acción, recompensa, siguiente estado, hecho)
 
-    episodes = 1000         # Número de episodios para entrenar el modelo
+    episodes = 200          # Número de episodios para entrenar el modelo
     gamma = 0.95            # Factor de descuento para las recompensas futuras
     epsilon = 1.0           # Epsilon-greedy para la exploración: probabilidad de elegir una acción aleatoria
     epsilon_min = 0.01      # Valor mínimo de epsilon para evitar exploración excesiva
