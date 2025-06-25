@@ -11,8 +11,8 @@ time.sleep(1)
 # Ejecutar el cliente
 #subprocess.run(["python", "cliente.py"])
 
-#subprocess.run(["python", "multi_goal_q_learning.py"])
-subprocess.run(["python", "goal_to_goal_q_learning.py"])
+subprocess.run(["python", "multi_goal_q_learning.py"])
+#subprocess.run(["python", "goal_to_goal_q_learning.py"])
 
 #subprocess.run(["python", "robot_pos.py"])
 

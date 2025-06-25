@@ -23,7 +23,7 @@ mobile_id = 99
 # Dimensiones de la matriz virtual
 grid_width = 400
 grid_height = 400
-step = 50  # distancia entre líneas de la grilla
+step = 80  # distancia entre líneas de la grilla
 
 # Coordenadas destino fijas para la grilla (TL, TR, BR, BL)
 dst_pts = np.array([
@@ -132,32 +132,69 @@ while True:
 
             # Detectar marcador móvil
             if mobile_id in detected:
-                mobile_corner = detected[mobile_id][0]
-                center = np.mean(mobile_corner, axis=0).reshape(1, 1, 2)
+                mobile_corners = detected[mobile_id][0]  # 4 esquinas del ArUco (en imagen original)
+                
+                # Dibujar el contorno del ArUco en el frame original
+                pts_int = mobile_corners.astype(int)
+                cv.polylines(frame, [pts_int], isClosed=True, color=MARKER_COLOR, thickness=2)
+                
+                # Proyectar las 4 esquinas al espacio de la grilla
+                mobile_corners = mobile_corners.reshape(-1, 1, 2)
+                transformed_corners = cv.perspectiveTransform(mobile_corners, inv_h_matrix)
+                
+                # Extraer x, y proyectados
+                xs = transformed_corners[:, 0, 0]
+                ys = transformed_corners[:, 0, 1]
+                
+                # Verificamos si TODAS las esquinas están dentro de la misma celda
+                cols = xs // step
+                rows = ys // step
 
-                # Transformar al sistema de la grilla
-                transformed = cv.perspectiveTransform(center, inv_h_matrix)
-                x, y = transformed[0][0]
+                if np.all(cols == cols[0]) and np.all(rows == rows[0]):
+                    col = int(cols[0])
+                    row = int(rows[0])
 
-                # Determinar en qué celda está el marcador
-                col = int(x // step)
-                row = int(y // step)
+                    if 0 <= col < (grid_width // step) and 0 <= row < (grid_height // step):
+                        # Centro del ArUco proyectado
+                        x_center = np.mean(xs)
+                        y_center = np.mean(ys)
 
-                # Validar límites
-                if 0 <= col < (grid_width // step) and 0 <= row < (grid_height // step):
-                    celda = f"Fila {row}, Columna {col}"
+                        # Límites de la celda
+                        cell_x_min = col * step
+                        cell_x_max = (col + 1) * step
+                        cell_y_min = row * step
+                        cell_y_max = (row + 1) * step
+
+                        # Zona central permitida (por ejemplo, 60% del área)
+                        margin_ratio = 0.2  # margen de 20% en cada lado
+                        margin_x = step * margin_ratio
+                        margin_y = step * margin_ratio
+
+                        # Límites de la zona central
+                        central_x_min = cell_x_min + margin_x
+                        central_x_max = cell_x_max - margin_x
+                        central_y_min = cell_y_min + margin_y
+                        central_y_max = cell_y_max - margin_y
+
+                        # Verificar si el centro del ArUco está dentro de la zona central
+                        if central_x_min <= x_center <= central_x_max and central_y_min <= y_center <= central_y_max:
+                            celda = f"Fila {row}, Columna {col}"
+
+                            # Mostrar en pantalla
+                            cv.putText(frame, f"Rel pos: ({x_center:.1f}, {y_center:.1f})", (50, 50), cv.FONT_HERSHEY_SIMPLEX, 0.8, MARKER_COLOR, 2)
+                            cv.putText(frame, celda, (50, 80), cv.FONT_HERSHEY_SIMPLEX, 0.8, MARKER_COLOR, 2)
+
+                            # Mostrar por consola cada X segundos
+                            if time.time() - last_print > print_interval:
+                                print(f"ArUco {mobile_id} centrado en celda: ({row}, {col})")
+                                last_print = time.time()
+                        else:
+                            celda = "ArUco no centrado en la celda"
+                    else:
+                        celda = "Fuera de la grilla"
                 else:
-                    celda = "Fuera de la grilla"
+                    celda = "Marcador no completamente en una sola celda"
 
-                # Dibujar ubicación
-                cv.circle(frame, tuple(center[0][0].astype(int)), 8, MARKER_COLOR, -1)
-                cv.putText(frame, f"Rel pos: ({x:.1f}, {y:.1f})", (50, 50), cv.FONT_HERSHEY_SIMPLEX, 0.8, MARKER_COLOR, 2)
-                cv.putText(frame, celda, (50, 80), cv.FONT_HERSHEY_SIMPLEX, 0.8, MARKER_COLOR, 2)
-
-                # Mostrar por consola cada X segundos
-                if time.time() - last_print > print_interval:
-                    print(f"Posición relativa del marcador {mobile_id}: x={x:.1f}, y={y:.1f} -> {celda}")
-                    last_print = time.time()
 
     cv.imshow("Tracking ArUco", frame)
     key = cv.waitKey(1) & 0xFF
@@ -171,4 +208,3 @@ while True:
 
 cap.release()
 cv.destroyAllWindows()
-

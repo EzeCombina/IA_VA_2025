@@ -45,7 +45,8 @@ except subprocess.CalledProcessError:
     print("[ERROR] Falló el redireccionamiento ADB. Verificá que el celular esté conectado y ADB esté funcionando.")
 
 # Cámara
-cap = cv.VideoCapture("http://127.0.0.1:8080/video")
+#cap = cv.VideoCapture("http://127.0.0.1:8080/video")
+cap = cv.VideoCapture(1)
 
 last_print = 0
 print_interval = 3  # segundos
