@@ -1,0 +1,7 @@
+config = {
+    "GRID_SIZE": [20, 15],
+    "OBSTACLES": [(6, 1), (9, 1), (8, 5), (8, 8), (9, 13), (11, 13)],
+    "START": (3, 10),
+    "GOALS": [(18, 3), (17, 11)],
+    "ACTIONS": ['UP', 'DOWN', 'LEFT', 'RIGHT']
+}
