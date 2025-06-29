@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Mapeo de la zona</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+
+        canvas {
+            border: 2px solid #ccc;
+            cursor: crosshair;
+            margin-top: 10px;
+        }
+
+        .boton {
+            margin: 10px 5px;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+        }
+
+        #modificarIF { background-color: #d9534f; color: white; }
+        #modificarIF:hover { background-color: #c9302c; }
+
+        #toggleObstaculos { background-color: #5bc0de; color: white; }
+        #toggleObstaculos.activo { background-color: #0275d8; }
+
+        #borrarObstaculos { background-color: #f0ad4e; color: white; }
+        #borrarObstaculos:hover { background-color: #ec971f; }
+
+        #enviarConfig { background-color: green; color: white; }
+        #enviarConfig:hover { background-color: darkgreen; }
+    </style>
+</head>
+<body>
+
+    <h1>Mapeo de la zona</h1>
+    <p id="estado">Esperando cantidad de puntos finales...</p>
+
+    <canvas id="mapa" width="800" height="600"></canvas>
+
+    <br>
+    <button id="modificarIF" class="boton">Modificar puntos I/F</button>
+    <button id="toggleObstaculos" class="boton">Agregar obstáculos</button>
+    <button id="borrarObstaculos" class="boton">Borrar obstáculos</button>
+    <button id="enviarConfig" class="boton">Enviar al servidor</button>
+
+    <p id="mensaje" style="font-weight: bold; color: green;"></p>
+
+    <script>
+        const canvas = document.getElementById('mapa');
+        const ctx = canvas.getContext('2d');
+        const estadoTexto = document.getElementById('estado');
+        const btnModificarIF = document.getElementById('modificarIF');
+        const btnObstaculos = document.getElementById('toggleObstaculos');
+        const btnBorrarObstaculos = document.getElementById('borrarObstaculos');
+        const btnEnviarConfig = document.getElementById('enviarConfig');
+        const mensaje = document.getElementById("mensaje");
+
+        let puntos = {};
+        let totalFinales = 0;
+        let seleccionados = 0;
+        let fase = 'inicio';
+        let modoObstaculo = false;
+
+        const img = new Image();
+        img.src = "{{ url_for('static', filename='Aula.jpg') }}";
+        img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        };
+
+        function redibujar() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+            for (let clave in puntos) {
+                if (clave === "obstaculos") continue;
+                const p = puntos[clave];
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+                ctx.fillStyle = clave === "I" ? "red" : "blue";
+                ctx.fill();
+                ctx.strokeStyle = "#000";
+                ctx.stroke();
+                ctx.fillStyle = "#000";
+                ctx.font = "14px Arial";
+                ctx.fillText(clave, p.x - 5, p.y - 15);
+            }
+
+            if (puntos.obstaculos) {
+                for (let o of puntos.obstaculos) {
+                    ctx.beginPath();
+                    ctx.arc(o.x, o.y, 8, 0, Math.PI * 2);
+                    ctx.fillStyle = "black";
+                    ctx.fill();
+                }
+            }
+        }
+
+        function enviarPuntosAlServidor() {
+            fetch('/guardar_puntos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(puntos)
+            });
+        }
+
+        canvas.addEventListener('click', function(event) {
+            if (fase === 'completo' && !modoObstaculo) return;
+            if (fase === 'idle' && !modoObstaculo) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+
+            if (modoObstaculo) {
+                if (!puntos["obstaculos"]) puntos["obstaculos"] = [];
+                puntos["obstaculos"].push({ x, y });
+                redibujar();
+                return;
+            }
+
+            if (fase === 'inicio') {
+                puntos["I"] = { x, y };
+                estadoTexto.textContent = "Seleccione los puntos finales (" + totalFinales + ")";
+                fase = 'finales';
+            } else if (fase === 'finales') {
+                const etiqueta = "F" + (seleccionados + 1);
+                puntos[etiqueta] = { x, y };
+                seleccionados++;
+
+                if (seleccionados === totalFinales) {
+                    estadoTexto.textContent = "Todos los puntos seleccionados.";
+                    fase = 'completo';
+                    enviarPuntosAlServidor();
+                } else {
+                    estadoTexto.textContent = `Seleccione punto final ${seleccionados + 1} de ${totalFinales}`;
+                }
+            }
+
+            redibujar();
+        });
+
+        btnModificarIF.addEventListener('click', () => {
+            const obstaculos = puntos["obstaculos"] || [];
+            puntos = { "obstaculos": obstaculos };
+            seleccionados = 0;
+            fase = 'inicio';
+            modoObstaculo = false;
+
+            const entrada = prompt("¿Cuántos puntos finales desea ingresar?");
+            const num = parseInt(entrada, 10);
+
+            if (isNaN(num) || num <= 0) {
+                alert("Debe ingresar un número válido mayor a 0. Cancelando selección.");
+                fase = 'idle';
+                redibujar();
+                return;
+            }
+
+            totalFinales = num;
+            estadoTexto.textContent = "Seleccione el punto de inicio";
+            redibujar();
+        });
+
+        btnObstaculos.addEventListener('click', () => {
+            modoObstaculo = !modoObstaculo;
+
+            if (modoObstaculo) {
+                btnObstaculos.textContent = "Finalizar obstáculos";
+                btnObstaculos.classList.add("activo");
+                estadoTexto.textContent = "Modo obstáculos activado. Haga clic para agregar.";
+            } else {
+                btnObstaculos.textContent = "Agregar obstáculos";
+                btnObstaculos.classList.remove("activo");
+                estadoTexto.textContent = "Obstáculos finalizados.";
+                enviarPuntosAlServidor();
+            }
+        });
+
+        btnBorrarObstaculos.addEventListener('click', () => {
+            puntos["obstaculos"] = [];
+            redibujar();
+            enviarPuntosAlServidor();
+            estadoTexto.textContent = "Obstáculos borrados.";
+        });
+
+        btnEnviarConfig.addEventListener('click', () => {
+            mensaje.textContent = "Enviando configuración...";
+            mensaje.style.color = "black";
+
+            fetch('/enviar_config', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === "ok") {
+                        mensaje.style.color = "green";
+                        mensaje.textContent = "✅ " + data.mensaje;
+                    } else {
+                        mensaje.style.color = "red";
+                        mensaje.textContent = "❌ Error al guardar: " + data.mensaje;
+                    }
+                })
+                .catch(err => {
+                    mensaje.style.color = "red";
+                    mensaje.textContent = "❌ Falló la conexión con el servidor.";
+                    console.error(err);
+                });
+        });
+
+        window.onload = () => {
+            fase = 'idle';
+            fetch('/datos')
+                .then(response => response.json())
+                .then(data => {
+                    puntos = data || {};
+                    redibujar();
+                });
+        };
+    </script>
+</body>
+</html>
