@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <title>Marcado de puntos en video</title>
+    <style>
+        #video-stream {
+            border: 2px solid black;
+            cursor: crosshair;
+            display: block;
+        }
+        #canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            pointer-events: none;
+        }
+        #container {
+            position: relative;
+            display: inline-block;
+        }
+        button, input {
+            margin: 5px;
+            padding: 10px;
+        }
+        .active {
+            background-color: lightgreen;
+        }
+    </style>
+</head>
+<body>
+    <h1>Marcado de puntos sobre el video</h1>
+
+    <label>Tamaño de la grilla: <input type="number" id="gridSizeInput" value="40" min="1"></label><br>
+
+    <button id="inicio-btn">Inicio</button>
+    <button id="final-btn">Final</button>
+    <button id="obstaculo-btn">Obstáculo</button>
+    <button id="borrar-inicio">Borrar Inicio</button>
+    <button id="borrar-final">Borrar Finales</button>
+    <button id="borrar-obstaculo">Borrar Obstáculos</button>
+    <button id="enviar">Enviar al servidor</button>
+
+    <div id="container">
+        <img id="video-stream" src="/video_feed" width="800" height="600" />
+        <canvas id="canvas" width="800" height="600"></canvas>
+    </div>
+
+    <script>
+        let gridSize = parseInt(document.getElementById("gridSizeInput").value);
+        let modo = null;
+        let puntos = { finales: [], obstaculos: [] };
+
+        const btnInicio = document.getElementById("inicio-btn");
+        const btnFinal = document.getElementById("final-btn");
+        const btnObstaculo = document.getElementById("obstaculo-btn");
+
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        document.getElementById("gridSizeInput").addEventListener("change", () => {
+            gridSize = parseInt(document.getElementById("gridSizeInput").value);
+            dibujar();
+        });
+
+        function actualizarBotones() {
+            [btnInicio, btnFinal, btnObstaculo].forEach(b => b.classList.remove("active"));
+            if (modo === "I") btnInicio.classList.add("active");
+            if (modo === "F") btnFinal.classList.add("active");
+            if (modo === "O") btnObstaculo.classList.add("active");
+        }
+
+        btnInicio.onclick = () => { modo = (modo === "I") ? null : "I"; actualizarBotones(); };
+        btnFinal.onclick = () => { modo = (modo === "F") ? null : "F"; actualizarBotones(); };
+        btnObstaculo.onclick = () => { modo = (modo === "O") ? null : "O"; actualizarBotones(); };
+
+        const videoStream = document.getElementById("video-stream");
+        videoStream.addEventListener("click", (e) => {
+            if (!modo) return;
+
+            const rect = videoStream.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            const gx = Math.floor(x / gridSize) * gridSize;
+            const gy = Math.floor(y / gridSize) * gridSize;
+
+            if (modo === "I") {
+                if ("I" in puntos) {
+                    alert("Solo puede haber un punto de inicio. Borra el actual para agregar otro.");
+                    return;
+                }
+                puntos["I"] = { x: gx, y: gy };
+            } else if (modo === "F") {
+                puntos.finales.push({ x: gx, y: gy });
+            } else if (modo === "O") {
+                puntos.obstaculos.push({ x: gx, y: gy });
+            }
+            dibujar();
+        });
+
+        document.getElementById("borrar-inicio").onclick = () => { delete puntos.I; dibujar(); };
+        document.getElementById("borrar-final").onclick = () => { puntos.finales = []; dibujar(); };
+        document.getElementById("borrar-obstaculo").onclick = () => { puntos.obstaculos = []; dibujar(); };
+
+        document.getElementById("enviar").onclick = () => {
+            fetch("/guardar_config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ puntos, grid_size: gridSize })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) alert("¡Configuración guardada correctamente!");
+                else alert("Error: " + data.error);
+            })
+            .catch(() => alert("Error en la comunicación con el servidor."));
+        };
+
+        function dibujar() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = "#eee";
+            for (let x = 0; x <= canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            if ("I" in puntos) {
+                ctx.fillStyle = "blue";
+                ctx.fillRect(puntos.I.x, puntos.I.y, gridSize, gridSize);
+            }
+            ctx.fillStyle = "green";
+            puntos.finales.forEach(p => ctx.fillRect(p.x, p.y, gridSize, gridSize));
+
+            ctx.fillStyle = "red";
+            puntos.obstaculos.forEach(p => ctx.fillRect(p.x, p.y, gridSize, gridSize));
+        }
+
+        dibujar();
+    </script>
+</body>
+</html>

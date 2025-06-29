@@ -13,7 +13,9 @@ time.sleep(5)
 #q_learning.wait()
 
 # Lanzar ArUco tracking (en paralelo)
-aruco = subprocess.Popen(["python", "mapeo.py"])
+#aruco = subprocess.Popen(["python", "mapeo.py"])
+aruco = subprocess.Popen(["python", "mapeo_guia.py"])
+#aruco = subprocess.Popen(["python", "Server_V2.py"])
 time.sleep(1)
 
 # Esperar finalización de Q-Learning

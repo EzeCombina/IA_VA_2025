@@ -90,7 +90,7 @@ def main():
             keyboard.wait('e')
 
             print("[CLIENTE] Leyendo archivo de configuración 'datos.txt'...")
-            with open("datos.txt", "r") as f:
+            with open("datos2.txt", "r") as f:
                 data = f.read()
             local = {}
             exec(data, {}, local)

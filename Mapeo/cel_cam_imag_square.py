@@ -5,7 +5,7 @@ import datetime
 
 # Diccionario y detector ArUco
 # Estas funciones son parte de OpenCV y permiten detectar marcadores ArUco en imágenes o videos.
-dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_6X6_250)
+dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_4X4_250)
 parameters = cv.aruco.DetectorParameters()
 detector = cv.aruco.ArucoDetector(dictionary, parameters)
 

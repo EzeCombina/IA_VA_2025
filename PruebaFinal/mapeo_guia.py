@@ -5,10 +5,10 @@ import datetime
 import socket
 
 # === CONFIGURACIÓN DE TCP ===
-TCP_IP = "192.168.4.1"   # IP del ESP32 en modo AP
+TCP_IP = "192.168.4.1"
 TCP_PORT = 3333
 
-cap = cv.VideoCapture(1)  # O la URL de la cámara IP
+cap = cv.VideoCapture(1)
 
 def esperar_conexion_esp32():
     while True:
@@ -21,10 +21,8 @@ def esperar_conexion_esp32():
             print("[MAPEO] ESP32 ocupado. Reintentando en 1 segundos...")
             time.sleep(1)
 
-# Al comienzo del script de mapeo:
 sock = esperar_conexion_esp32()
 
-# === Configuración ArUco y cámara ===
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_4X4_250)
 parameters = cv.aruco.DetectorParameters()
 detector = cv.aruco.ArucoDetector(dictionary, parameters)
@@ -39,7 +37,7 @@ mobile_id = 99
 
 grid_width = 400
 grid_height = 400
-step = 80
+step = 100
 
 dst_pts = np.array([
     [0, 0],
@@ -48,34 +46,46 @@ dst_pts = np.array([
     [0, grid_height]
 ], dtype=np.float32)
 
+camera_matrix = np.array([
+    [800, 0, 320],
+    [0, 800, 240],
+    [0, 0, 1]
+], dtype=np.float32)
+dist_coeffs = np.zeros((5, 1))
+
+marker_length = 0.05
+
 GRID_COLOR = (255, 0, 0)
 MARKER_COLOR = (0, 255, 255)
 
-#cap = cv.VideoCapture(1)  # O la URL de la cámara IP
-
 last_sent_cell = None
 last_sent_time = 0
-send_interval = 1.0  # segundos
+send_interval = 1.0
+last_sent_angle = None
+angle_send_threshold = 2.0
 
 def guardar_snapshot_con_grilla(frame_con_grilla, src_pts):
-    """
-    Recorta y guarda la zona delimitada por los ArUcos (con la grilla ya dibujada encima).
-    """
-    global dst_pts
-
     src_pts = np.array(src_pts, dtype=np.float32)
-
-    # Matriz de homografía para recorte corregido
     h_crop = cv.getPerspectiveTransform(src_pts, dst_pts)
-
-    # Aplicamos la transformación al frame con grilla ya superpuesta
     snapshot = cv.warpPerspective(frame_con_grilla, h_crop, (grid_width, grid_height))
-
-    # Generamos un nombre con timestamp
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"snapshot_{timestamp}.png"
     cv.imwrite(filename, snapshot)
     print(f"[INFO] Imagen guardada como {filename}")
+
+def estimate_pose_from_corners(corners, marker_length):
+    obj_points = np.array([
+        [-marker_length/2,  marker_length/2, 0],
+        [ marker_length/2,  marker_length/2, 0],
+        [ marker_length/2, -marker_length/2, 0],
+        [-marker_length/2, -marker_length/2, 0]
+    ], dtype=np.float32)
+
+    img_points = corners.reshape(4, 2).astype(np.float32)
+    success, rvec, tvec = cv.solvePnP(obj_points, img_points, camera_matrix, dist_coeffs)
+    if not success:
+        raise ValueError("solvePnP falló")
+    return rvec, tvec
 
 while True:
     ret, frame = cap.read()
@@ -89,11 +99,7 @@ while True:
         detected = {int(id): corner for id, corner in zip(ids, corners)}
 
         if all(id in detected for id in aruco_positions):
-            src_pts = []
-            for id in [25, 33, 30, 23]:
-                _, idx = aruco_positions[id]
-                pt = detected[id][0][idx]
-                src_pts.append(pt)
+            src_pts = [detected[id][0][aruco_positions[id][1]] for id in [25, 33, 30, 23]]
             src_pts = np.array(src_pts, dtype=np.float32)
 
             h_matrix = cv.getPerspectiveTransform(dst_pts, src_pts)
@@ -108,15 +114,13 @@ while True:
                 cv.line(grid_img, (0, y), (grid_width, y), line_color, 1)
 
             warped = cv.warpPerspective(grid_img, h_matrix, (frame.shape[1], frame.shape[0]), flags=cv.INTER_LINEAR, borderMode=cv.BORDER_TRANSPARENT)
-            warped_bgr = warped[..., :3]
-            alpha_mask = warped[..., 3]
-            alpha_mask_3 = cv.merge([alpha_mask]*3)
-            alpha = alpha_mask_3.astype(float) / 255.0
+            alpha = warped[..., 3].astype(float) / 255.0
             frame_float = frame.astype(float)
-            warped_float = warped_bgr.astype(float)
-            frame = cv.convertScaleAbs(warped_float * alpha + frame_float * (1 - alpha))
+            warped_float = warped[..., :3].astype(float)
+            frame = cv.convertScaleAbs(warped_float * alpha[..., None] + frame_float * (1 - alpha[..., None]))
             frame_con_grilla = frame.copy()
 
+            # === POSICION ===
             if mobile_id in detected:
                 mobile_corners = detected[mobile_id][0]
                 pts_int = mobile_corners.astype(int)
@@ -130,7 +134,7 @@ while True:
                 cols = xs // step
                 rows = ys // step
 
-                if np.all(cols == cols[0]) and np.all(rows == rows[0]):
+                if np.std(cols) < 0.2 and np.std(rows) < 0.2:
                     col = int(cols[0])
                     row = int(rows[0])
 
@@ -138,39 +142,61 @@ while True:
                         x_center = np.mean(xs)
                         y_center = np.mean(ys)
 
-                        cell_x_min = col * step
-                        cell_x_max = (col + 1) * step
-                        cell_y_min = row * step
-                        cell_y_max = (row + 1) * step
+                        margin_x = step * 0.05 # 0.2
+                        margin_y = step * 0.05 # 0.2
 
-                        margin_ratio = 0.2
-                        margin_x = step * margin_ratio
-                        margin_y = step * margin_ratio
+                        cxmin = col * step + margin_x
+                        cxmax = (col + 1) * step - margin_x
+                        cymin = row * step + margin_y
+                        cymax = (row + 1) * step - margin_y
 
-                        central_x_min = cell_x_min + margin_x
-                        central_x_max = cell_x_max - margin_x
-                        central_y_min = cell_y_min + margin_y
-                        central_y_max = cell_y_max - margin_y
-
-                        if central_x_min <= x_center <= central_x_max and central_y_min <= y_center <= central_y_max:
+                        if cxmin <= x_center <= cxmax and cymin <= y_center <= cymax:
                             celda = f"Fila {row}, Columna {col}"
                             cv.putText(frame, celda, (50, 80), cv.FONT_HERSHEY_SIMPLEX, 0.8, MARKER_COLOR, 2)
 
                             current_time = time.time()
                             if (last_sent_cell != (row, col)) or (current_time - last_sent_time > send_interval):
-                                mensaje = f"POS {row},{col}\n"
-                                print(f"[TCP] Enviando: {mensaje.strip()}")
-                                try:
+                                mensaje_pos = f"POS {row},{col}\n"
+                                #print(f"[TCP] Enviando: {mensaje_pos.strip()}")
+                                for _ in range(5):
                                     if sock:
-                                        sock.send(mensaje.encode())
-                                except Exception as e:
-                                    print(f"[TCP] Error al enviar: {e}")
+                                        print(f"[TCP] Enviando: {mensaje_pos.strip()}")
+                                        sock.send(mensaje_pos.encode())
+                                        time.sleep(10/1000)
                                 last_sent_cell = (row, col)
                                 last_sent_time = current_time
 
+            # === ORIENTACIÓN ===
+            if mobile_id in detected and 25 in detected:
+                rvec_99, tvec_99 = estimate_pose_from_corners(detected[mobile_id][0], marker_length)
+                rvec_25, tvec_25 = estimate_pose_from_corners(detected[25][0], marker_length)
+
+                cv.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvec_99, tvec_99, 0.03)
+                cv.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvec_25, tvec_25, 0.03)
+
+                def get_yaw_from_rvec(rvec):
+                    R, _ = cv.Rodrigues(rvec)
+                    yaw = np.arctan2(R[1, 0], R[0, 0])
+                    return np.degrees(yaw)
+
+                yaw_mobile = get_yaw_from_rvec(rvec_99)
+                yaw_ref = get_yaw_from_rvec(rvec_25)
+                delta_yaw = (yaw_mobile - yaw_ref + 180) % 360 - 180
+
+                cv.putText(frame, f"Delta yaw: {delta_yaw:.1f} deg", (50, 110), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+
+                current_time = time.time()
+                if (last_sent_angle is None or abs(delta_yaw - last_sent_angle) > angle_send_threshold or (current_time - last_sent_time > send_interval)):
+                    mensaje_yaw = f"ANG {delta_yaw:.2f}\n"
+                    print(f"[TCP] Enviando: {mensaje_yaw.strip()}")
+                    if sock:
+                        sock.send(mensaje_yaw.encode())
+                    last_sent_angle = delta_yaw
+                    last_sent_time = current_time
+
     cv.imshow("Tracking ArUco", frame)
     key = cv.waitKey(1) & 0xFF
-    if key == 27:  # ESC
+    if key == 27:
         break
     elif key == ord('s'):
         if 'src_pts' in locals() and 'frame_con_grilla' in locals():
@@ -182,4 +208,3 @@ cap.release()
 cv.destroyAllWindows()
 if sock:
     sock.close()
-

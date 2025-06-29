@@ -19,7 +19,7 @@
 #define PORT 3333
 #define PROCESADORA 0
 #define PROCESADORB 1
-#define VALUE_TEST 150
+#define VALUE_TEST 65
 
 /*==================[Variables globales]======================*/
 static const char *TAG = "TCP_SERVER";
