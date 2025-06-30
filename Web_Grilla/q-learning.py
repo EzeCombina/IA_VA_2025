@@ -206,7 +206,7 @@ def train(env, state_size, action_size):
     criterion = nn.MSELoss()
     memory = deque(maxlen=2000)
 
-    episodes = 100
+    episodes = 500
     gamma = 0.95
     epsilon = 1.0
     epsilon_min = 0.01
